@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catch the Falling Objects</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background-color: #87CEEB;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #level {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #achievement {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <div id="level">Level: 1</div>
+    <div id="achievement"></div>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let score = 0;
+        let level = 1;
+        let objects = [];
+        const objectSize = 20;
+        let boss = null;
+        let achievements = new Set();
+
+        const bucketWidth = 100;
+        const bucketHeight = 20;
+        const bucket = {
+            x: canvas.width / 2 - bucketWidth / 2,
+            y: canvas.height - bucketHeight - 10,
+            width: bucketWidth,
+            height: bucketHeight,
+            speed: 20,
+        };
+
+        function showAchievement(text) {
+            const achievementBox = document.getElementById("achievement");
+            achievementBox.innerText = text;
+            achievementBox.style.display = "block";
+            setTimeout(() => {
+                achievementBox.style.display = "none";
+            }, 2000);
+        }
+
+        function createObject() {
+            const x = Math.random() * (canvas.width - objectSize);
+            objects.push({ x, y: 0, speed: 3 + level });
+        }
+
+        function createBoss() {
+            const x = Math.random() * (canvas.width - objectSize * 2);
+            boss = { x, y: 0, speed: 2 + level, hits: level * 2 };
+        }
+
+        function moveBucket(direction) {
+            if (direction === "left" && bucket.x > 0) {
+                bucket.x -= bucket.speed;
+            } else if (
+                direction === "right" &&
+                bucket.x + bucket.width < canvas.width
+            ) {
+                bucket.x += bucket.speed;
+            }
+        }
+
+        function updateObjects() {
+            for (let i = objects.length - 1; i >= 0; i--) {
+                objects[i].y += objects[i].speed;
+
+                // Collision detection with bucket
+                if (
+                    objects[i].x + objectSize > bucket.x &&
+                    objects[i].x < bucket.x + bucket.width &&
+                    objects[i].y + objectSize > bucket.y &&
+                    objects[i].y < bucket.y + bucket.height
+                ) {
+                    score++;
+                    objects.splice(i, 1);
+
+                    // Trigger achievements
+                    if (score === 10 && !achievements.has("10 Points")) {
+                        showAchievement("Achievement Unlocked: First 10 Points!");
+                        achievements.add("10 Points");
+                    }
+                    continue;
+                }
+
+                // Remove objects that fall past the canvas
+                if (objects[i].y > canvas.height) {
+                    objects.splice(i, 1);
+                }
+            }
+        }
+
+        function updateBoss() {
+            if (boss) {
+                boss.y += boss.speed;
+                if (Math.random() < 0.02) boss.x += Math.random() < 0.5 ? -20 : 20;
+
+                // Collision detection with bucket
+                if (
+                    boss.x + objectSize * 2 > bucket.x &&
+                    boss.x < bucket.x + bucket.width &&
+                    boss.y + objectSize * 2 > bucket.y &&
+                    boss.y < bucket.y + bucket.height
+                ) {
+                    boss.hits--;
+                    if (boss.hits <= 0) {
+                        boss = null;
+                        score += 10;
+                        showAchievement("Boss Defeated!");
+                    }
+                }
+
+                // Boss leaves the screen
+                if (boss.y > canvas.height) boss = null;
+            }
+        }
+
+        function levelUp() {
+            if (score >= level * 20) {
+                level++;
+                document.getElementById("level").innerText = `Level: ${level}`;
+                showAchievement(`Level ${level} Reached!`);
+                if (level % 3 === 0) createBoss(); // Boss every 3 levels
+            }
+        }
+
+        function drawBucket() {
+            ctx.fillStyle = "#FF4500";
+            ctx.fillRect(bucket.x, bucket.y, bucket.width, bucket.height);
+        }
+
+        function drawObjects() {
+            ctx.fillStyle = "#FFD700";
+            objects.forEach((obj) =>
+                ctx.fillRect(obj.x, obj.y, objectSize, objectSize)
+            );
+        }
+
+        function drawBoss() {
+            if (boss) {
+                ctx.fillStyle = "#8B0000";
+                ctx.fillRect(boss.x, boss.y, objectSize * 2, objectSize * 2);
+            }
+        }
+
+        function updateScore() {
+            document.getElementById("score").innerText = `Score: ${score}`;
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawBucket();
+            drawObjects();
+            drawBoss();
+            updateObjects();
+            updateBoss();
+            updateScore();
+            levelUp();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowLeft") {
+                moveBucket("left");
+            } else if (event.key === "ArrowRight") {
+                moveBucket("right");
+            }
+        });
+
+        setInterval(createObject, 1000 - level * 50);
+        gameLoop();
+    </script>
+</body>
+</html>
