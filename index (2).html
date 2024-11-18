@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catch the Falling Objects</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background-color: #87CEEB;
+        }
+        #menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+        }
+        #menu button {
+            background: #FF4500;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 20px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #score, #coins, #level {
+            position: absolute;
+            color: white;
+            font-size: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+        #score { top: 10px; left: 10px; }
+        #coins { top: 10px; right: 10px; }
+        #level { top: 50px; left: 10px; }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h1>Welcome to the Game</h1>
+        <button id="loginButton">Login with Google</button>
+        <div id="userInfo" style="display: none;">
+            <h2 id="username"></h2>
+            <button id="startGame">Start Game</button>
+        </div>
+    </div>
+    <div id="score">Score: 0</div>
+    <div id="coins">Coins: 0</div>
+    <div id="level">Level: 1</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDaABc6bOm9Xe_ziIpm81CREJ1PUtuHXeQ",
+            authDomain: "auth-29641.firebaseapp.com",
+            databaseURL: "https://auth-29641-default-rtdb.firebaseio.com",
+            projectId: "auth-29641",
+            storageBucket: "auth-29641.firebasestorage.app",
+            messagingSenderId: "18460799597",
+            appId: "1:18460799597:web:a081c485cb4f593ce38564"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+
+        // DOM Elements
+        const loginButton = document.getElementById("loginButton");
+        const userInfo = document.getElementById("userInfo");
+        const username = document.getElementById("username");
+        const startGameButton = document.getElementById("startGame");
+        const scoreDiv = document.getElementById("score");
+        const coinsDiv = document.getElementById("coins");
+        const levelDiv = document.getElementById("level");
+
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Game Variables
+        let score = 0;
+        let coins = 0;
+        let level = 1;
+        let isGameRunning = false;
+        let userId = null;
+
+        const bucket = {
+            x: canvas.width / 2 - 50,
+            y: canvas.height - 30,
+            width: 100,
+            height: 20,
+            speed: 20
+        };
+
+        const objects = [];
+
+        // Responsive canvas
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Firebase Authentication
+        loginButton.addEventListener("click", () => {
+            const provider = new GoogleAuthProvider();
+            signInWithPopup(auth, provider)
+                .then((result) => {
+                    const user = result.user;
+                    userId = user.uid;
+                    username.innerText = `Welcome, ${user.displayName}`;
+                    loginButton.style.display = "none";
+                    userInfo.style.display = "block";
+                    loadProgress(userId);
+                })
+                .catch((error) => console.error("Authentication error:", error));
+        });
+
+        // Load progress from Firebase
+        function loadProgress(userId) {
+            get(child(ref(database), `users/${userId}`))
+                .then((snapshot) => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        score = data.score || 0;
+                        coins = data.coins || 0;
+                        level = data.level || 1;
+                        updateUI();
+                    }
+                })
+                .catch((error) => console.error("Load progress error:", error));
+        }
+
+        // Save progress to Firebase
+        function saveProgress(userId) {
+            set(ref(database, `users/${userId}`), {
+                score,
+                coins,
+                level
+            }).catch((error) => console.error("Save progress error:", error));
+        }
+
+        // Update UI
+        function updateUI() {
+            scoreDiv.innerText = `Score: ${score}`;
+            coinsDiv.innerText = `Coins: ${coins}`;
+            levelDiv.innerText = `Level: ${level}`;
+        }
+
+        // Start Game
+        startGameButton.addEventListener("click", () => {
+            isGameRunning = true;
+            document.getElementById("menu").style.display = "none";
+            gameLoop();
+        });
+
+        // Game Logic
+        function gameLoop() {
+            if (!isGameRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw bucket
+            ctx.fillStyle = "red";
+            ctx.fillRect(bucket.x, bucket.y, bucket.width, bucket.height);
+
+            // Draw objects
+            ctx.fillStyle = "gold";
+            objects.forEach((obj, index) => {
+                ctx.fillRect(obj.x, obj.y, 20, 20);
+                obj.y += obj.speed;
+
+                // Check collision with bucket
+                if (
+                    obj.x < bucket.x + bucket.width &&
+                    obj.x + 20 > bucket.x &&
+                    obj.y < bucket.y + bucket.height &&
+                    obj.y + 20 > bucket.y
+                ) {
+                    objects.splice(index, 1);
+                    score++;
+                    coins++;
+                    updateUI();
+                }
+
+                // Remove objects that fall off the screen
+                if (obj.y > canvas.height) {
+                    objects.splice(index, 1);
+                }
+            });
+
+            // Update bucket position
+            window.addEventListener("keydown", (e) => {
+                if (e.key === "ArrowLeft") bucket.x = Math.max(0, bucket.x - bucket.speed);
+                if (e.key === "ArrowRight") bucket.x = Math.min(canvas.width - bucket.width, bucket.x + bucket.speed);
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Generate falling objects
+        setInterval(() => {
+            if (isGameRunning) {
+                const x = Math.random() * (canvas.width - 20);
+                objects.push({ x, y: 0, speed: 2 + Math.random() * level });
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
